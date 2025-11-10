@@ -1,0 +1,91 @@
+[project]
+name = "aml4cv"
+version = "0.1.0"
+description = "Advanced Machine Learning for Computer Vision Project"
+readme = "README.md"
+requires-python = ">=3.11, <3.12"
+dependencies = [
+    "accelerate>=1.11.0",
+    "opencv-python>=4.12.0.88",
+    "pillow>=12.0.0",
+    "python-dotenv>=1.2.1",
+    "rich>=14.2.0",
+    "safetensors>=0.6.2",
+    "scipy>=1.16.3",
+    "termcolor>=3.2.0",
+    "torch>=2.9.0",
+    "torchvision>=0.24.0",
+    "transformers>=4.57.1",
+    "wandb>=0.22.3",
+]
+
+[project.scripts]
+train = "scripts.train:train"
+
+[build-system]
+requires = ["uv_build>=0.9.8,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+  "fabric>=3.2.2",
+  "jupyter>=1.1.1",
+  "matplotlib>=3.10.6",
+  "nbstripout>=0.8.1",
+  "pre-commit>=4.3.0",
+  "ruff>=0.13.2",
+  "scikit-learn>=1.7.2",
+  "seaborn>=0.13.2",
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+py-feat = { git = "https://github.com/cosanlab/py-feat", rev = "c4f6364299ea2258ae1e73ed73c95750a18bff3e" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu129"
+explicit = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+exclude = [".git", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv"]
+extend-exclude = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = [
+    # isort (imports)
+    "I",
+    # pydocstyle (docstrings)
+    "D",
+    # pycodestyle errors and warnings (PEP8)
+    "E",
+    "W",
+]
+ignore = [
+    # Type annotations for *args
+    "ANN002",
+    # Type annotations for **kwargs
+    "ANN003",
+]
+
+[tool.ruff.lint.extend-per-file-ignores]
+"__init__.py" = [
+    # Unused imports
+    "F401",
+]
+
+# dont worry about docstrings in scripts
+"src/scripts/*" = ["D"]
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

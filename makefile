@@ -51,4 +51,4 @@ install-pre-commit:
 	@uv run pre-commit autoupdate
 
 setup-remote: ## Setup environment on remote machine
-	@uv run python src/scripts/setup_remote.py --remote $(REMOTE)
+	@uv run setup-remote --remote $(REMOTE)

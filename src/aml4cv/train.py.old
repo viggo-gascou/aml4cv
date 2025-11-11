@@ -1,0 +1,261 @@
+"""Training utilities for the AML4CV project."""
+
+import argparse
+from typing import Dict, Tuple
+
+import torch
+import torch.nn as nn
+from torch import nn
+from torch.utils.data import DataLoader
+from torchvision.transforms import v2
+from tqdm import tqdm
+from transformers import ViTForImageClassification, ViTImageProcessor
+
+from .constants import CLASSES, ID2LABEL, LABEL2ID
+from .dataset import FlowersDataset
+
+
+def get_model_and_processor(
+    device: str,
+) -> Tuple[ViTForImageClassification, ViTImageProcessor]:
+    """Get the model and processor for training.
+
+    Return:
+        A tuple of the model and its corresponding processor.
+    """
+    model_id = "google/vit-large-patch32-224-in21k"
+
+    model = ViTForImageClassification.from_pretrained(
+        model_id,
+        num_labels=len(CLASSES),
+        label2id=LABEL2ID,
+        id2label=ID2LABEL,
+        ignore_mismatched_sizes=True,
+        device_map=device,
+    )
+    image_processor = ViTImageProcessor.from_pretrained(
+        model_id,
+    )
+
+    return model, image_processor
+
+
+def get_data_loaders(
+    train_transforms: v2.Compose,
+    val_test_transforms: v2.Compose,
+    args: argparse.Namespace,
+) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    """Get the data loaders for train, val and test.
+
+    Args:
+        train_transforms:
+            Transformations to apply to the training data.
+        val_test_transforms:
+            Transformations to apply to the validation and test data.
+        args:
+            Command-line arguments.
+    """
+    train_dataset = FlowersDataset(
+        root=args.data_path, split="train", transforms=train_transforms
+    )
+    val_dataset = FlowersDataset(
+        root=args.data_path, split="val", transforms=val_test_transforms
+    )
+    test_dataset = FlowersDataset(
+        root=args.data_path, split="test", transforms=val_test_transforms
+    )
+
+    def collate_fn(batch):
+        """Collate function for the data loader.
+
+        This function takes a batch of data and returns a tuple of tuples.
+        """
+        return tuple(zip(*batch))
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
+        collate_fn=collate_fn,
+        shuffle=True,
+        num_workers=args.num_workers,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        collate_fn=collate_fn,
+        shuffle=False,
+        num_workers=args.num_workers,
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=args.batch_size,
+        collate_fn=collate_fn,
+        shuffle=False,
+        num_workers=args.num_workers,
+    )
+    return train_loader, val_loader, test_loader
+
+
+def train_one_epoch(
+    model: nn.Module,
+    train_loader: DataLoader,
+    optimizer: torch.optim.Optimizer,
+    criterion: nn.Module,
+    device: torch.device,
+    epoch: int,
+) -> Tuple[float, float]:
+    """Train the model for one epoch.
+
+    Args:
+        model: The model to train.
+        train_loader: Training data loader.
+        optimizer: Optimizer for training.
+        criterion: Loss function.
+        device: Device to use for training.
+        epoch: Current epoch number.
+
+    Returns:
+        Tuple of (average_loss, accuracy).
+    """
+    model.train()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+
+    pbar = tqdm(train_loader, description=f"Epoch {epoch} [Train]")
+    for batch_idx, (images, labels) in enumerate(pbar):
+        images, labels = images.to(device), labels.to(device)
+
+        optimizer.zero_grad()
+        outputs = model(pixel_values=images)
+        loss = criterion(outputs.logits, labels)
+
+        loss.backward()
+        optimizer.step()
+
+        # Metrics
+        running_loss += loss.item()
+        _, predicted = outputs.logits.max(1)
+        total += labels.size(0)
+        correct += predicted.eq(labels).sum().item()
+
+        # Update progress bar
+        pbar.set_postfix(
+            {"loss": running_loss / (batch_idx + 1), "acc": 100.0 * correct / total}
+        )
+
+    avg_loss = running_loss / len(train_loader)
+    accuracy = 100.0 * correct / total
+
+    return avg_loss, accuracy
+
+
+def validate(
+    model: nn.Module,
+    val_loader: DataLoader,
+    criterion: nn.Module,
+    device: torch.device,
+) -> Tuple[float, float]:
+    """Validate the model.
+
+    Args:
+        model: The model to validate.
+        val_loader: Validation data loader.
+        criterion: Loss function.
+        device: Device to use for validation.
+
+    Returns:
+        Tuple of (average_loss, accuracy).
+    """
+    model.eval()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+        pbar = tqdm(val_loader, desc="[Validation]")
+        for images, labels in pbar:
+            images, labels = images.to(device), labels.to(device)
+
+            outputs = model(pixel_values=images)
+            loss = criterion(outputs.logits, labels)
+
+            running_loss += loss.item()
+            _, predicted = outputs.logits.max(1)
+            total += labels.size(0)
+            correct += predicted.eq(labels).sum().item()
+
+            pbar.set_postfix(
+                {"loss": running_loss / (pbar.n + 1), "acc": 100.0 * correct / total}
+            )
+
+    avg_loss = running_loss / len(val_loader)
+    accuracy = 100.0 * correct / total
+
+    return avg_loss, accuracy
+
+
+def evaluate(
+    model: nn.Module,
+    test_loader: DataLoader,
+    criterion: nn.Module,
+    device: torch.device,
+) -> Dict[str, float]:
+    """Evaluate the model on test set.
+
+    Args:
+        model: The model to evaluate.
+        test_loader: Test data loader.
+        criterion: Loss function.
+        device: Device to use for evaluation.
+
+    Returns:
+        Dictionary of metrics.
+    """
+    test_loss, test_acc = validate(model, test_loader, criterion, device)
+    return {"loss": test_loss, "accuracy": test_acc}
+
+
+class EarlyStopper:
+    """Early stopping utility."""
+
+    def __init__(
+        self, patience: int = 3, min_delta: float = 0.01, minimize: bool = False
+    ):
+        """Initialize early stopper.
+
+        Args:
+            patience:
+                Number of epochs to wait before stopping.
+            min_delta:
+                Minimum change to qualify as improvement.
+            minimize:
+                Whether to minimize the metric (True for loss, False for accuracy).
+        """
+        self.patience = patience
+        self.min_delta = min_delta
+        self.minimize = minimize
+        self.counter = 0
+        self.best_metric = float("inf") if minimize else float("-inf")
+
+    def early_stop(self, metric: float) -> bool:
+        """Check if should stop early.
+
+        Args:
+            metric: Current metric value.
+
+        Returns:
+            True if should stop, False otherwise.
+        """
+        if self.minimize:
+            improved = metric < (self.best_metric - self.min_delta)
+        else:
+            improved = metric > (self.best_metric + self.min_delta)
+
+        if improved:
+            self.best_metric = metric
+            self.counter = 0
+        else:
+            self.counter += 1
+
+        return self.counter >= self.patience

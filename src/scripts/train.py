@@ -1,9 +1,269 @@
-from aml4cv.model import load_model
+import torch
+import torch.nn as nn
+import wandb
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from torchvision.transforms import v2
+from tqdm import tqdm
+
+from aml4cv.callbacks import EarlyStopper
+from aml4cv.constants import CLASSES, RESULTS_DIR
+from aml4cv.log_utils import log
+from aml4cv.metrics import ClassificationMetric
+from aml4cv.train import (
+    evaluate,
+    get_data_loaders,
+    get_model_and_processor,
+    log_predictions,
+    prepare_batch,
+    save_checkpoint,
+    save_model,
+    train_one_epoch,
+    validate,
+)
+from aml4cv.utils import parse_args
 
 
 def train() -> None:
-    print("Training from aml4cv scripts!")
-    model = load_model()
+    args = parse_args()
+    if args.device == "cuda" and not torch.cuda.is_available():
+        raise ValueError("CUDA is not available, but CUDA was requested!")
+    torch_device = torch.device(args.device)
+
+    log(f"Using device: {args.device}")
+    model_id = "google/vit-large-patch32-224-in21k"
+
+    model, processor = get_model_and_processor(model_id, args.device)
+    image_mean = (
+        processor.image_mean
+        if isinstance(processor.image_mean, list)
+        else [processor.image_mean] * 3
+    )
+    image_std = (
+        processor.image_std
+        if isinstance(processor.image_std, list)
+        else [processor.image_std] * 3
+    )
+    train_transforms = v2.Compose(
+        [
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Resize((processor.size["height"], processor.size["width"])),
+            v2.Normalize(mean=image_mean, std=image_std),
+        ]
+    )
+    val_test_transforms = v2.Compose(
+        [
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Resize((processor.size["height"], processor.size["width"])),
+            v2.Normalize(mean=image_mean, std=image_std),
+        ]
+    )
+
+    train_loader, val_loader, test_loader = get_data_loaders(
+        train_transforms, val_test_transforms, args
+    )
+
+    # Set random seed for reproducibility
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+
+    training_config = {
+        "model_name": model_id,
+        "num_classes": len(CLASSES),
+        "learning_rate": args.learning_rate,
+        "weight_decay": args.weight_decay,
+        "batch_size": args.batch_size,
+        "epochs": args.epochs,
+        "optimizer": "adamw",
+        "scheduler": "cosine",
+        "augmentation_proba": args.augmentation_proba,
+        "seed": args.seed,
+        "early_stopping_criterion": "loss",
+        "early_stopping_patience": 5,
+        "early_stopping_min_delta": 0.001,
+    }
+
+    log(f"Train samples: {len(train_loader)}")
+    log(f"Val samples: {len(val_loader)}")
+    log(f"Test samples: {len(test_loader)}")
+
+    # Setup W&B
+    log("Initializing Weights & Biases...")
+    wandb.login()
+    run = wandb.init(
+        project=args.wandb_project,
+        name=f"{model_id.split('/')[-1]}_flowers102",
+        config=training_config,
+    )
+
+    config = run.config
+    log(f"Training configuration:\n{dict(config)}")
+
+    # Optimizer and scheduler
+    optimizer = AdamW(
+        model.parameters(),
+        lr=config.learning_rate,
+        weight_decay=config.weight_decay,
+    )
+
+    lr_scheduler = CosineAnnealingLR(
+        optimizer,
+        T_max=config.epochs,
+        eta_min=1e-6,
+    )
+
+    # Loss function
+    criterion = nn.CrossEntropyLoss()
+
+    # Metric computer
+    metric = ClassificationMetric(num_classes=len(CLASSES), task="multiclass")
+
+    # Early stopper
+    early_stopper = EarlyStopper(
+        patience=config.early_stopping_patience,
+        min_delta=config.early_stopping_min_delta,
+        minimize=False,  # False for accuracy (higher is better)
+    )
+
+    # Training loop
+    log("Starting training...")
+    best_val_metric = float("-inf")  # For accuracy (higher is better)
+
+    for epoch in tqdm(range(config.epochs), desc="Epochs"):
+        log(f"\nEpoch {epoch + 1}/{config.epochs}")
+
+        # Train
+        train_loss, loss_components = train_one_epoch(
+            model=model,
+            train_loader=train_loader,
+            optimizer=optimizer,
+            device=torch_device,
+            run=run,
+            loss_fn=criterion,
+            prepare_batch_fn=prepare_batch,
+            short_run=args.short_run,
+        )
+
+        # Validate
+        val_metrics, val_loss = validate(
+            model=model,
+            val_loader=val_loader,
+            device=torch_device,
+            metric=metric,
+            loss_fn=criterion,
+            short_run=args.short_run,
+            prepare_batch_fn=prepare_batch,
+        )
+
+        # Update learning rate
+        lr_scheduler.step()
+
+        # Log metrics
+        metrics = {
+            "epoch": epoch,
+            "train/loss": train_loss,
+            "val/loss": val_loss,
+            "val/accuracy": val_metrics["accuracy"],
+            "val/f1_macro": val_metrics["f1_macro"],
+            "val/f1_micro": val_metrics["f1_micro"],
+            "val/precision": val_metrics["precision"],
+            "val/recall": val_metrics["recall"],
+            "learning_rate": lr_scheduler.get_last_lr()[0],
+        }
+
+        run.log(metrics)
+
+        # Print progress
+        log(
+            f"Train Loss: {train_loss:.4f}, "
+            f"Val Loss: {val_loss:.4f}, "
+            f"Val Accuracy: {val_metrics['accuracy']:.4f}, "
+            f"Val F1 (macro): {val_metrics['f1_macro']:.4f}"
+        )
+
+        # Determine metric for checkpointing
+        val_metric = val_metrics[config.early_stopping_criterion]
+        is_best = val_metric > best_val_metric
+
+        if is_best:
+            best_val_metric = val_metric
+            log(f"New best model! Accuracy: {best_val_metric:.4f}")
+
+        # Log predictions periodically
+        if epoch % 5 == 0 or is_best:
+            log_predictions(
+                run=run,
+                model=model,
+                data_loader=val_loader,
+                device=torch_device,
+                class_names=CLASSES,
+                num_images=25,
+                table_name=f"val/epoch_{epoch}_predictions",
+            )
+
+        # Save checkpoint
+        save_checkpoint(
+            run=run,
+            model=model,
+            optimizer=optimizer,
+            epoch=epoch,
+            is_best=is_best,
+            val_metric=val_metric if is_best else None,
+        )
+
+        # Early stopping
+        if early_stopper.early_stop(val_metric):
+            log(f"Early stopping triggered at epoch {epoch + 1}")
+            break
+
+    # Final evaluation on test set
+    log("\nEvaluating on test set...")
+    test_metrics = evaluate(
+        model=model,
+        test_loader=test_loader,
+        device=torch_device,
+        metric=metric,
+        prepare_batch_fn=prepare_batch,
+    )
+
+    # Log final test metrics
+    run.summary["test/accuracy"] = test_metrics["accuracy"]
+    run.summary["test/f1_macro"] = test_metrics["f1_macro"]
+    run.summary["test/f1_micro"] = test_metrics["f1_micro"]
+    run.summary["test/precision"] = test_metrics["precision"]
+    run.summary["test/recall"] = test_metrics["recall"]
+
+    log("\nTest Results:")
+    log(f"  Accuracy: {test_metrics['accuracy']:.4f}")
+    log(f"  F1 (macro): {test_metrics['f1_macro']:.4f}")
+    log(f"  F1 (micro): {test_metrics['f1_micro']:.4f}")
+    log(f"  Precision: {test_metrics['precision']:.4f}")
+    log(f"  Recall: {test_metrics['recall']:.4f}")
+
+    # Save final model
+    final_model_path = str(RESULTS_DIR / "final_model.safetensors")
+    save_model(model, final_model_path)
+    run.log_artifact(
+        final_model_path,
+        name="final_model",
+        type="model",
+        aliases=["model_final"],
+    )
+
+    # Log test predictions
+    log_predictions(
+        run=run,
+        model=model,
+        data_loader=test_loader,
+        device=torch_device,
+        class_names=CLASSES,
+        num_images=50,
+        table_name="test/predictions",
+    )
+
+    run.finish()
+    log("Training complete!")
 
 
 if __name__ == "__main__":

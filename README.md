@@ -1,5 +1,4 @@
-# Image Classification of Flowers using Vision Transformers
-
+# Automated Flower Classification Over a Large Number of Classes
 
 ## Key problem
 

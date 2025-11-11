@@ -32,6 +32,7 @@ def train() -> None:
 
     log(f"Using device: {args.device}")
     model_id = "google/vit-large-patch32-224-in21k"
+    # model_id = "google/vit-huge-patch14-224-in21k"
 
     model, processor = get_model_and_processor(model_id, args.device)
     image_mean = (
@@ -79,7 +80,7 @@ def train() -> None:
         "scheduler": "cosine",
         "augmentation_proba": args.augmentation_proba,
         "seed": args.seed,
-        "early_stopping_criterion": "loss",
+        "early_stopping_criterion": "f1_macro",
         "early_stopping_patience": 5,
         "early_stopping_min_delta": 0.001,
     }
@@ -110,14 +111,17 @@ def train() -> None:
     lr_scheduler = CosineAnnealingLR(
         optimizer,
         T_max=config.epochs,
-        eta_min=1e-6,
+        eta_min=5e-6,
     )
 
     # Loss function
     criterion = nn.CrossEntropyLoss()
 
     # Metric computer
-    metric = ClassificationMetric(num_classes=len(CLASSES), task="multiclass")
+    metric = ClassificationMetric(
+        num_classes=len(CLASSES),
+        task="multiclass",
+    )
 
     # Early stopper
     early_stopper = EarlyStopper(
@@ -190,17 +194,15 @@ def train() -> None:
             best_val_metric = val_metric
             log(f"New best model! Accuracy: {best_val_metric:.4f}")
 
-        # Log predictions periodically
-        if epoch % 5 == 0 or is_best:
-            log_predictions(
-                run=run,
-                model=model,
-                data_loader=val_loader,
-                device=torch_device,
-                class_names=CLASSES,
-                num_images=25,
-                table_name=f"val/epoch_{epoch}_predictions",
-            )
+        log_predictions(
+            run=run,
+            model=model,
+            data_loader=val_loader,
+            device=torch_device,
+            class_names=CLASSES,
+            num_images=25,
+            table_name=f"val/epoch_{epoch}_predictions",
+        )
 
         # Save checkpoint
         save_checkpoint(

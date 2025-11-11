@@ -382,7 +382,8 @@ def log_predictions(
             for img, target, pred_class, confidence in zip(
                 images.cpu(), targets.cpu(), pred_classes.cpu(), confidences.cpu()
             ):
-                # Convert tensor to numpy
+                # Convert tensor to numpy and scale
+                img = img.add(1).mul(127.5).clamp(0, 255)
                 img_np = img.permute(1, 2, 0).numpy()
 
                 gt_label = (

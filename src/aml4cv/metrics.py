@@ -4,9 +4,6 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict
 
 import torch
-import wandb
-
-from .constants import RESULTS_DIR
 
 
 class Metric(ABC):
@@ -86,11 +83,11 @@ class ClassificationMetric(Metric):
         else:
             preds = predictions
 
-        self.accuracy.update(preds, targets)
-        self.f1_macro.update(preds, targets)
-        self.f1_micro.update(preds, targets)
-        self.precision.update(preds, targets)
-        self.recall.update(preds, targets)
+        self.accuracy.update(preds.cpu(), targets.cpu())
+        self.f1_macro.update(preds.cpu(), targets.cpu())
+        self.f1_micro.update(preds.cpu(), targets.cpu())
+        self.precision.update(preds.cpu(), targets.cpu())
+        self.recall.update(preds.cpu(), targets.cpu())
 
     def compute(self) -> Dict[str, Any]:
         """Compute classification metrics."""

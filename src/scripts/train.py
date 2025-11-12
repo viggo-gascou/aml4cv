@@ -118,10 +118,7 @@ def train() -> None:
     criterion = nn.CrossEntropyLoss()
 
     # Metric computer
-    metric = ClassificationMetric(
-        num_classes=len(CLASSES),
-        task="multiclass",
-    )
+    metric = ClassificationMetric(num_classes=len(CLASSES))
 
     # Early stopper
     early_stopper = EarlyStopper(

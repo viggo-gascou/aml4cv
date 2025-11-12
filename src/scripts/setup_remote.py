@@ -19,7 +19,6 @@ def parse_args():
     )
     parser.add_argument(
         "--repo",
-        default="https://github.com/viggo-gascou/rsp.git",
         help="The repository to clone, on the remote machine.",
     )
     parser.add_argument(
@@ -64,6 +63,9 @@ def check_args(args):
             "Git email is required. Set GIT_EMAIL environment variable or "
             "use the --email flag."
         )
+
+    if not args.repo:
+        errors.append("Git repository is required. Use the --repo flag.")
 
     # Validate remote format
     if "@" not in args.remote:

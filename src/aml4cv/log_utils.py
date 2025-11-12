@@ -4,7 +4,7 @@ import logging
 
 from termcolor import colored
 
-logger = logging.getLogger("rsp")
+logger = logging.getLogger("aml4cv")
 
 
 def log(message: str, level: int = logging.INFO, colour: str | None = None) -> None:

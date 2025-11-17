@@ -1,3 +1,5 @@
+import logging
+
 import torch
 import torch.nn as nn
 import wandb
@@ -8,12 +10,14 @@ from tqdm import tqdm
 
 from aml4cv.callbacks import EarlyStopper
 from aml4cv.constants import CLASSES, RESULTS_DIR
-from aml4cv.log_utils import log
+from aml4cv.log_utils import log, set_logging_level
 from aml4cv.metrics import ClassificationMetric
 from aml4cv.train import (
     evaluate,
     get_data_loaders,
+    get_data_transforms,
     get_model_and_processor,
+    load_local_checkpoint,
     log_predictions,
     prepare_batch,
     save_checkpoint,
@@ -22,6 +26,8 @@ from aml4cv.train import (
     validate,
 )
 from aml4cv.utils import parse_args
+
+set_logging_level(logging.INFO)
 
 
 def train() -> None:
@@ -45,19 +51,9 @@ def train() -> None:
         if isinstance(processor.image_std, list)
         else [processor.image_std] * 3
     )
-    train_transforms = v2.Compose(
-        [
-            v2.ToDtype(torch.float32, scale=True),
-            v2.Resize((processor.size["height"], processor.size["width"])),
-            v2.Normalize(mean=image_mean, std=image_std),
-        ]
-    )
-    val_test_transforms = v2.Compose(
-        [
-            v2.ToDtype(torch.float32, scale=True),
-            v2.Resize((processor.size["height"], processor.size["width"])),
-            v2.Normalize(mean=image_mean, std=image_std),
-        ]
+    image_width, image_height = processor.size["width"], processor.size["height"]
+    train_transforms, val_test_transforms = get_data_transforms(
+        image_mean, image_std, image_width, image_height, args.augmentation_proba
     )
 
     train_loader, val_loader, test_loader = get_data_loaders(
@@ -96,6 +92,7 @@ def train() -> None:
         project=args.wandb_project,
         name=f"{model_id.split('/')[-1]}_flowers102",
         config=training_config,
+        tags=["short_run"] if args.short_run else [],
     )
 
     config = run.config
@@ -130,6 +127,7 @@ def train() -> None:
     # Training loop
     log("Starting training...")
     best_val_metric = float("-inf")  # For accuracy (higher is better)
+    is_best = False
 
     for epoch in tqdm(range(config.epochs), desc="Epochs"):
         log(f"\nEpoch {epoch + 1}/{config.epochs}")
@@ -191,6 +189,11 @@ def train() -> None:
             best_val_metric = val_metric
             log(f"New best model! Accuracy: {best_val_metric:.4f}")
 
+        if args.short_run:
+            log("Doing a short run, so not logging models or predictions.")
+            run.finish()
+            return
+
         log_predictions(
             run=run,
             model=model,
@@ -216,6 +219,17 @@ def train() -> None:
             log(f"Early stopping triggered at epoch {epoch + 1}")
             break
 
+    # if last epoch was not the best, load the best model
+    best_checkpoint_info = None
+    if not is_best:
+        model, optimizer, best_checkpoint_info = load_local_checkpoint(
+            run=run,
+            model=model,
+            optimizer=optimizer,
+            use_best_checkpoint=True,
+        )
+        log(f"Loaded best checkpoint: {best_checkpoint_info['artifact_name']}")
+
     # Final evaluation on test set
     log("\nEvaluating on test set...")
     test_metrics = evaluate(
@@ -240,15 +254,26 @@ def train() -> None:
     log(f"  Precision: {test_metrics['precision']:.4f}")
     log(f"  Recall: {test_metrics['recall']:.4f}")
 
-    # Save final model
-    final_model_path = str(RESULTS_DIR / "final_model.safetensors")
-    save_model(model, final_model_path)
-    run.log_artifact(
-        final_model_path,
-        name="final_model",
-        type="model",
-        aliases=["model_final"],
-    )
+    # Add "final" alias to the best model artifact
+    if best_checkpoint_info and best_checkpoint_info["artifact_name"]:
+        log(
+            f"Adding 'final' alias to artifact: {best_checkpoint_info['artifact_name']}"
+        )
+        best_artifact = run.use_artifact(
+            f"{best_checkpoint_info['artifact_name']}:latest"
+        )
+        best_artifact.aliases.append("final")
+        best_artifact.save()
+    else:
+        # Last epoch was the best, save the current model as final
+        final_model_path = str(RESULTS_DIR / "final_model.safetensors")
+        save_model(model, final_model_path)
+        run.log_artifact(
+            final_model_path,
+            name="final_model",
+            type="model",
+            aliases=["model_final"],
+        )
 
     # Log test predictions
     log_predictions(

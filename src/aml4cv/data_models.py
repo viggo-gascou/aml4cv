@@ -1,3 +1,5 @@
+"""Data models for the AML4CV project."""
+
 from typing import TypedDict
 
 

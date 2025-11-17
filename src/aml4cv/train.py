@@ -1,12 +1,13 @@
 """Training utilities for the AML4CV project."""
 
 import argparse
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import wandb
-from safetensors.torch import save_model
+from safetensors.torch import load_file, save_model
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2
@@ -15,6 +16,7 @@ from transformers import ViTForImageClassification, ViTImageProcessor
 
 from .constants import CLASSES, ID2LABEL, LABEL2ID, RESULTS_DIR
 from .dataset import FlowersDataset
+from .log_utils import log
 from .metrics import Metric
 from .utils import move_to_device
 
@@ -123,6 +125,65 @@ def get_data_loaders(
         num_workers=args.num_workers,
     )
     return train_loader, val_loader, test_loader
+
+
+def get_data_transforms(
+    image_mean: List[float | int],
+    image_std: List[float | int],
+    image_width: int,
+    image_height: int,
+    augmentation_proba: float,
+) -> Tuple[v2.Compose, v2.Compose]:
+    """Get data transformations for training and validation/test.
+
+    Args:
+        image_mean:
+            Mean values for each channel for normalization.
+        image_std:
+            Standard deviation values for each channel for normalization.
+        image_width:
+            Width to resize images to.
+        image_height:
+            Height to resize images to.
+        augmentation_proba:
+            Probability of applying augmentations.
+
+    Returns:
+        A tuple of (train_transforms, val_test_transforms)
+    """
+    train_transforms = v2.Compose(
+        [
+            v2.RandomApply(
+                [v2.Pad(padding=10, padding_mode="constant")], p=augmentation_proba
+            ),
+            v2.RandomApply(
+                [v2.RandomRotation(degrees=[-180, 180])], p=augmentation_proba
+            ),
+            v2.RandomVerticalFlip(p=augmentation_proba),
+            v2.RandomApply(
+                [v2.GaussianBlur(kernel_size=(19, 19), sigma=(5.0, 10.0))],
+                p=augmentation_proba,
+            ),
+            v2.RandomApply(
+                [
+                    v2.CenterCrop(380)
+                ],  # about 1.50 of 224x224 - since inputs are between 500-1168 in height/width
+                p=augmentation_proba,
+            ),
+            v2.Resize((image_height, image_width)),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize(mean=image_mean, std=image_std),
+        ]
+    )
+
+    val_test_transforms = v2.Compose(
+        [
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Resize((image_height, image_width)),
+            v2.Normalize(mean=image_mean, std=image_std),
+        ]
+    )
+    return train_transforms, val_test_transforms
 
 
 def prepare_batch(images, targets, device):  # type: ignore # noqa
@@ -318,32 +379,35 @@ def save_checkpoint(
     val_metric: Optional[float] = None,
 ) -> None:
     """Save model checkpoint."""
-    # Regular checkpoint
-    if epoch % 5 == 0 or is_best:
-        suffix = f"best_epoch_{epoch}" if is_best else f"epoch_{epoch}"
-        checkpoint_path = str(RESULTS_DIR.joinpath(f"model_{suffix}.safetensors"))
-        save_model(model, checkpoint_path)
+    suffix = f"best_epoch_{epoch}" if is_best else f"epoch_{epoch}"
+    checkpoint_path = str(RESULTS_DIR.joinpath(f"model_{suffix}.safetensors"))
+    save_model(model, checkpoint_path)
 
-        if optimizer:
-            optimizer_path = str(RESULTS_DIR.joinpath(f"optimizer_{suffix}.pth"))
-            torch.save(optimizer.state_dict(), optimizer_path)
+    aliases = ["best_model"] if is_best else []
 
-        # Log to wandb
-        aliases = ["best_model"] if is_best else []
+    if optimizer:
+        optimizer_path = str(RESULTS_DIR.joinpath(f"optimizer_{suffix}.pth"))
+        torch.save(optimizer.state_dict(), optimizer_path)
         run.log_artifact(
-            checkpoint_path,
-            name=f"model_checkpoint_{suffix}",
-            type="model",
+            optimizer_path,
+            name=f"optimizer_checkpoint_{suffix}",
+            type="optimizer",
             aliases=aliases,
         )
 
-        if val_metric is not None and is_best:
-            print(
-                f"Saved best model checkpoint at epoch {epoch} with "
-                f"val_metric {val_metric:.4f}"
-            )
-        else:
-            print(f"Saved checkpoint at epoch {epoch}")
+    # Log to wandb
+    run.log_artifact(
+        checkpoint_path,
+        name=f"model_checkpoint_{suffix}",
+        type="model",
+        aliases=aliases,
+    )
+
+    if val_metric is not None and is_best:
+        log(
+            f"Saved best model checkpoint at epoch {epoch} with "
+            f"val_metric {val_metric:.4f}"
+        )
 
 
 def log_predictions(
@@ -359,6 +423,7 @@ def log_predictions(
     model.eval()
     table = wandb.Table(columns=["Image", "Ground Truth", "Prediction", "Confidence"])
     img_idx = 0
+    log("Logging predictions to wandb, this may take some time...")
 
     with torch.no_grad():
         for images, targets in data_loader:
@@ -406,3 +471,68 @@ def log_predictions(
                     return
 
         run.log({table_name: table}, commit=True)
+
+
+def load_local_checkpoint(
+    run,
+    model,
+    model_path="",
+    optimizer_path="",
+    optimizer=None,
+    use_best_checkpoint=False,
+) -> Tuple[nn.Module, Optional[torch.optim.Optimizer], dict[str, str]]:
+    """Load a local checkpoint from the specified paths or the best checkpoint.
+
+    If use_best_checkpoint is True, the best checkpoint will be loaded.
+
+    Args:
+        run:
+            The wandb run object.
+        model:
+            The model to load the checkpoint into.
+        model_path:
+            The path to the model checkpoint file.
+        optimizer_path:
+            The path to the optimizer checkpoint file.
+        optimizer:
+            The optimizer to load the checkpoint into.
+        use_best_checkpoint:
+            Whether to load the best checkpoint.
+
+    Returns:
+            A tuple of the loaded model, optimizer, and checkpoint info.
+    """
+    checkpoint_info = {}
+
+    if use_best_checkpoint:
+        from datetime import datetime
+
+        best_model_path = sorted(
+            Path(run.path).glob("model_best_epoch_*.safetensors"),
+            key=lambda file: datetime.fromtimestamp(file.lstat().st_birthtime),
+        )[-1]
+        model_path = best_model_path
+        optimizer_path = best_model_path.with_name(
+            best_model_path.name.replace("model", "optimizer")
+        )
+
+        artifact_name = best_model_path.stem
+        checkpoint_info["artifact_name"] = (
+            f"model_checkpoint_{artifact_name.replace('model_', '')}"
+        )
+    else:
+        model_path = Path(model_path)
+        optimizer_path = Path(optimizer_path)
+        checkpoint_info["artifact_name"] = None
+
+    checkpoint_info["model_path"] = str(model_path)
+    checkpoint_info["optimizer_path"] = str(optimizer_path)
+
+    if model_path.exists():
+        model_weights = load_file(model_path)
+        model.load_state_dict(model_weights)
+        if optimizer is not None:
+            optimizer.load_state_dict(torch.load(optimizer_path))
+        return model, optimizer, checkpoint_info
+    else:
+        return model, optimizer, checkpoint_info

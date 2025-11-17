@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
         "-p",
         "--augmentation-proba",
         type=float,
-        default=0.5,
+        default=0.1,
         help="Probability of applying each augmentation",
     )
     parser.add_argument(

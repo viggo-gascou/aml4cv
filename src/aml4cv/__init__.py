@@ -5,7 +5,7 @@ import logging
 from dotenv import load_dotenv
 from termcolor import colored
 
-from .constants import BASE_DIR, RESULTS_DIR
+from .constants import BASE_DIR, FIGURES_DIR, RESULTS_DIR
 from .log_utils import log, set_logging_level
 
 fmt = (
@@ -17,4 +17,4 @@ logging.basicConfig(level=logging.WARNING, format=fmt, datefmt="%Y-%m-%d %H:%M:%
 
 load_dotenv()
 
-__all__ = ["log", "set_logging_level", "BASE_DIR", "RESULTS_DIR"]
+__all__ = ["log", "set_logging_level", "BASE_DIR", "RESULTS_DIR", "FIGURES_DIR"]

@@ -3,11 +3,13 @@
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.parent.parent
-RESULTS_DIR = BASE_DIR.joinpath("results")
 DATA_DIR = BASE_DIR.joinpath("data")
+RESULTS_DIR = BASE_DIR.joinpath("results")
+FIGURES_DIR = RESULTS_DIR.joinpath("figures")
 
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
 RANDOM_SEED = 4242
 

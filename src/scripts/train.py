@@ -94,6 +94,33 @@ def train() -> None:
         config=training_config,
         tags=["short_run"] if args.short_run else [],
     )
+    # set log level again after wandb init because they clear the logging :(
+    set_logging_level(logging.INFO)
+
+    model, processor = get_model_and_processor(model_id, args.device)
+    image_mean = (
+        processor.image_mean
+        if isinstance(processor.image_mean, list)
+        else [processor.image_mean] * 3
+    )
+    image_std = (
+        processor.image_std
+        if isinstance(processor.image_std, list)
+        else [processor.image_std] * 3
+    )
+    image_width, image_height = processor.size["width"], processor.size["height"]
+    train_transforms, val_test_transforms = get_data_transforms(
+        image_mean, image_std, image_width, image_height, args.augmentation_proba
+    )
+
+    train_loader, val_loader, test_loader = get_data_loaders(
+        train_transforms, val_test_transforms, args
+    )
+
+    # Set random seed for reproducibility
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
 
     config = run.config
     log(f"Training configuration:\n{dict(config)}")

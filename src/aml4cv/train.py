@@ -1,6 +1,7 @@
 """Training utilities for the AML4CV project."""
 
 import argparse
+import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -10,6 +11,7 @@ import wandb
 from safetensors.torch import load_file, save_model
 from torch import nn
 from torch.utils.data import DataLoader
+from torchvision.models import VisionTransformer
 from torchvision.transforms import v2
 from tqdm import tqdm
 from transformers import ViTForImageClassification, ViTImageProcessor
@@ -24,7 +26,7 @@ from .utils import move_to_device
 def get_model_and_processor(
     model_id: str,
     device: str,
-) -> Tuple[ViTForImageClassification, ViTImageProcessor]:
+) -> Tuple[ViTForImageClassification | VisionTransformer, ViTImageProcessor]:
     """Get the model and processor for training.
 
     Args:
@@ -93,14 +95,24 @@ def get_data_loaders(
         args:
             Command-line arguments.
     """
-    train_dataset = FlowersDataset(
-        root=args.data_path, split="train", transforms=train_transforms
-    )
+    if args.swap_train_test:
+        log("Swapping train and test splits as per argument.", level=logging.WARNING)
+        train_dataset = FlowersDataset(
+            root=args.data_path, split="test", transforms=train_transforms
+        )
+        test_dataset = FlowersDataset(
+            root=args.data_path, split="train", transforms=val_test_transforms
+        )
+    else:
+        train_dataset = FlowersDataset(
+            root=args.data_path, split="train", transforms=train_transforms
+        )
+        test_dataset = FlowersDataset(
+            root=args.data_path, split="test", transforms=val_test_transforms
+        )
+
     val_dataset = FlowersDataset(
         root=args.data_path, split="val", transforms=val_test_transforms
-    )
-    test_dataset = FlowersDataset(
-        root=args.data_path, split="test", transforms=val_test_transforms
     )
 
     train_loader = DataLoader(
@@ -165,9 +177,8 @@ def get_data_transforms(
                 p=augmentation_proba,
             ),
             v2.RandomApply(
-                [
-                    v2.CenterCrop(380)
-                ],  # about 1.50 of 224x224 - since inputs are between 500-1168 in height/width
+                # about 1.50 of 224 - since inputs are between 500-1168 in height/width
+                [v2.CenterCrop(380)],
                 p=augmentation_proba,
             ),
             v2.Resize((image_height, image_width)),

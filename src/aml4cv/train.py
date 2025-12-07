@@ -228,6 +228,7 @@ def train_one_epoch(
     loss_fn: torch.nn.modules.loss._Loss,
     prepare_batch_fn: Optional[Callable] = None,
     short_run: bool = False,
+    args: argparse.Namespace = None,
 ) -> Tuple[float, Dict[str, float]]:
     """Train the model for one epoch.
 
@@ -248,6 +249,8 @@ def train_one_epoch(
             Function to prepare batch data. If None, uses default
         short_run:
             If True, only run one batch for testing
+        args:
+            Command line arguments
 
     Returns:
         Tuple of (average epoch loss, dict of individual loss components)
@@ -268,7 +271,11 @@ def train_one_epoch(
             images = batch_data
             targets = None
 
-        predictions = model(images).logits
+        if model.__class__.__name__ == "ViTForImageClassification":
+            predictions = model(images).logits
+        else:
+            predictions = model(images)
+
         loss = loss_fn(predictions, targets)
         losses = {"loss": loss}
 
@@ -340,14 +347,17 @@ def validate(
                 images = batch_data
                 targets = None
 
+            if model.__class__.__name__ == "ViTForImageClassification":
+                predictions = model(images).logits
+            else:
+                predictions = model(images)
+
             # Compute loss if requested
             if loss_fn is not None:
-                predictions = model(images).logits
                 loss = loss_fn(predictions, targets)
                 epoch_loss += loss.item()
 
             # Get predictions for metrics
-            predictions = model(images).logits
             metric.update(predictions, targets)
 
             if short_run:
@@ -386,7 +396,11 @@ def evaluate(
                 images = batch_data
                 targets = None
 
-            predictions = model(images).logits
+            if model.__class__.__name__ == "ViTForImageClassification":
+                predictions = model(images).logits
+            else:
+                predictions = model(images)
+
             metric.update(predictions, targets)
 
     return metric.compute()
@@ -456,7 +470,10 @@ def log_predictions(
                 else targets.to(device)
             )
 
-            predictions = model(images).logits
+            if model.__class__.__name__ == "ViTForImageClassification":
+                predictions = model(images).logits
+            else:
+                predictions = model(images)
 
             # Get predicted classes and confidence
             if predictions.dim() > 1:

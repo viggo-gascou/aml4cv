@@ -12,6 +12,14 @@ def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        default="pretrained",
+        choices=["pretrained", "base"],
+        help="Model for training",
+    )
+    parser.add_argument(
         "-v",
         dest="verbose",
         action="count",
@@ -26,6 +34,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "-e", "--epochs", type=int, default=10, help="Number of epochs for training"
+    )
+    parser.add_argument(
+        "--swap-train-test",
+        action="store_true",
+        default=False,
+        help="Swap training and test splits",
     )
     parser.add_argument(
         "-p",
@@ -96,8 +110,19 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
 
     _parse_log_level(args)
+    args.model = _parse_model(args)
 
     return args
+
+
+def _parse_model(args: argparse.Namespace) -> str:
+    """Parse the model_id from command line arguments."""
+    model_ids = {
+        "pretrained": "google/vit-large-patch16-224-in21k",
+        "base": "base",
+    }
+    model_id = model_ids[args.model]
+    return model_id
 
 
 def _parse_log_level(args: argparse.Namespace) -> None:

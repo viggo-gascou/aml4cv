@@ -37,33 +37,7 @@ def train() -> None:
     torch_device = torch.device(args.device)
 
     log(f"Using device: {args.device}")
-    model_id = "google/vit-large-patch32-224-in21k"
-    # model_id = "google/vit-huge-patch14-224-in21k"
-
-    model, processor = get_model_and_processor(model_id, args.device)
-    image_mean = (
-        processor.image_mean
-        if isinstance(processor.image_mean, list)
-        else [processor.image_mean] * 3
-    )
-    image_std = (
-        processor.image_std
-        if isinstance(processor.image_std, list)
-        else [processor.image_std] * 3
-    )
-    image_width, image_height = processor.size["width"], processor.size["height"]
-    train_transforms, val_test_transforms = get_data_transforms(
-        image_mean, image_std, image_width, image_height, args.augmentation_proba
-    )
-
-    train_loader, val_loader, test_loader = get_data_loaders(
-        train_transforms, val_test_transforms, args
-    )
-
-    # Set random seed for reproducibility
-    torch.manual_seed(args.seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(args.seed)
+    model_id = args.model
 
     training_config = {
         "model_name": model_id,
@@ -80,10 +54,6 @@ def train() -> None:
         "early_stopping_patience": 5,
         "early_stopping_min_delta": 0.001,
     }
-
-    log(f"Train samples: {len(train_loader)}")
-    log(f"Val samples: {len(val_loader)}")
-    log(f"Test samples: {len(test_loader)}")
 
     # Setup W&B
     log("Initializing Weights & Biases...")

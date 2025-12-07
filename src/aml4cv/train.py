@@ -36,24 +36,35 @@ def get_model_and_processor(
     Return:
         A tuple of the model and its corresponding processor.
     """
-    if model_id == "google/vit-large-patch32-224-in21k":
-        revision = "refs/pr/1"
+    if model_id == "base":
+        model = VisionTransformer(
+            image_size=224,
+            patch_size=16,
+            num_layers=12,
+            num_heads=12,
+            hidden_dim=768,
+            mlp_dim=3072,
+            num_classes=len(CLASSES),
+        ).to(device)
+        image_processor = ViTImageProcessor.from_pretrained(
+            "google/vit-base-patch16-224-in21k",
+            revision="main",
+        )
     else:
-        revision = "main"
-    model = ViTForImageClassification.from_pretrained(
-        model_id,
-        # make the model ready for fine-tuning on new dataset
-        num_labels=len(CLASSES),
-        label2id=LABEL2ID,
-        id2label=ID2LABEL,
-        ignore_mismatched_sizes=True,
-        device_map=device,
-        revision=revision,
-    )
-    image_processor = ViTImageProcessor.from_pretrained(
-        model_id,
-        revision=revision,
-    )
+        model = ViTForImageClassification.from_pretrained(
+            model_id,
+            # make the model ready for fine-tuning on new dataset
+            num_labels=len(CLASSES),
+            label2id=LABEL2ID,
+            id2label=ID2LABEL,
+            ignore_mismatched_sizes=True,
+            device_map=device,
+            revision="main",
+        )
+        image_processor = ViTImageProcessor.from_pretrained(
+            model_id,
+            revision="main",
+        )
 
     return model, image_processor
 

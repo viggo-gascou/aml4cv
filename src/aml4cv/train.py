@@ -548,7 +548,7 @@ def load_local_checkpoint(
 
         best_model_path = sorted(
             Path(run.dir).glob("model_best_epoch_*.safetensors"),
-            key=lambda file: datetime.fromtimestamp(file.lstat().st_birthtime),
+            key=lambda file: datetime.fromtimestamp(file.lstat().st_ctime),
         )[-1]
         model_path = best_model_path
         optimizer_path = best_model_path.with_name(

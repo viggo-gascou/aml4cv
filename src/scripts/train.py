@@ -128,8 +128,6 @@ def train() -> None:
     is_best = False
 
     for epoch in tqdm(range(config.epochs), desc="Epochs"):
-        log(f"\nEpoch {epoch + 1}/{config.epochs}")
-
         # Train
         train_loss, loss_components = train_one_epoch(
             model=model,

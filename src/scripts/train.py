@@ -51,9 +51,9 @@ def train() -> None:
         "scheduler": "cosine",
         "augmentation_proba": args.augmentation_proba,
         "seed": args.seed,
-        "early_stopping_criterion": "f1_macro",
-        "early_stopping_patience": 5,
-        "early_stopping_min_delta": 0.001,
+        "early_stopping_criterion": args.early_stop_criterion,
+        "early_stopping_patience": args.patience,
+        "early_stopping_min_delta": args.patience_min_delta,
     }
 
     # Setup W&B
@@ -106,7 +106,7 @@ def train() -> None:
     lr_scheduler = CosineAnnealingLR(
         optimizer,
         T_max=config.epochs,
-        eta_min=5e-6,
+        eta_min=args.min_learning_rate,
     )
 
     # Loss function

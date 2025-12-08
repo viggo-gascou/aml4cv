@@ -36,6 +36,21 @@ def parse_args() -> argparse.Namespace:
         "-e", "--epochs", type=int, default=10, help="Number of epochs for training"
     )
     parser.add_argument(
+        "--patience", type=int, default=5, help="Patience for early stopping"
+    )
+    parser.add_argument(
+        "--early-stop-criterion",
+        type=str,
+        default="f1_macro",
+        help="Criterion for early stopping",
+    )
+    parser.add_argument(
+        "--patience-min-delta",
+        type=float,
+        default=0.001,
+        help="Minimum delta for early stopping",
+    )
+    parser.add_argument(
         "--swap-train-test",
         action="store_true",
         default=False,
@@ -93,6 +108,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=5e-5,
         help="Learning rate for training",
+    )
+    parser.add_argument(
+        "--min-learning-rate",
+        type=float,
+        default=1e-5,
+        help="Minimum learning rate for the learning rate scheduler",
     )
     parser.add_argument(
         "--weight-decay",

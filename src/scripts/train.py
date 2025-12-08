@@ -283,7 +283,7 @@ def train() -> None:
     )
     if best_checkpoint_info:
         # save the final model to local folder
-        final_model_path = str(Path(run.path) / "final_model.safetensors")
+        final_model_path = str(Path(run.dir) / "final_model.safetensors")
         save_model(model, final_model_path)
 
     run.finish()

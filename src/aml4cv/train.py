@@ -416,13 +416,13 @@ def save_checkpoint(
 ) -> None:
     """Save model checkpoint."""
     suffix = f"best_epoch_{epoch}" if is_best else f"epoch_{epoch}"
-    checkpoint_path = str(RESULTS_DIR.joinpath(f"model_{suffix}.safetensors"))
+    checkpoint_path = str(Path(run.path).joinpath(f"model_{suffix}.safetensors"))
     save_model(model, checkpoint_path)
 
     aliases = ["best_model"] if is_best else []
 
     if optimizer:
-        optimizer_path = str(RESULTS_DIR.joinpath(f"optimizer_{suffix}.pth"))
+        optimizer_path = str(Path(run.path).joinpath(f"optimizer_{suffix}.pth"))
         torch.save(optimizer.state_dict(), optimizer_path)
         run.log_artifact(
             optimizer_path,

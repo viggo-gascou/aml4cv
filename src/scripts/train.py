@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -259,7 +260,7 @@ def train() -> None:
         best_artifact = run.use_artifact(
             f"{best_checkpoint_info['artifact_name']}:latest"
         )
-        best_artifact.aliases.append("final")
+        best_artifact.aliases.append("model_final")
         best_artifact.save()
     else:
         # Last epoch was the best, save the current model as final
@@ -282,6 +283,10 @@ def train() -> None:
         num_images=50,
         table_name="test/predictions",
     )
+    if best_checkpoint_info:
+        # save the final model to local folder
+        final_model_path = str(Path(run.path) / "final_model.safetensors")
+        save_model(model, final_model_path)
 
     run.finish()
     log("Training complete!")

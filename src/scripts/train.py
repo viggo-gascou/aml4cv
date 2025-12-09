@@ -184,6 +184,15 @@ def train() -> None:
         if is_best:
             best_val_metric = val_metric
             log(f"New best model! Accuracy: {best_val_metric:.4f}")
+            # Save checkpoint
+            save_checkpoint(
+                run=run,
+                model=model,
+                optimizer=optimizer,
+                epoch=epoch,
+                is_best=is_best,
+                val_metric=val_metric if is_best else None,
+            )
 
         if args.short_run:
             log("Doing a short run, so not logging models or predictions.")
@@ -200,16 +209,6 @@ def train() -> None:
             table_name=f"val/epoch_{epoch}_predictions",
         )
 
-        # Save checkpoint
-        save_checkpoint(
-            run=run,
-            model=model,
-            optimizer=optimizer,
-            epoch=epoch,
-            is_best=is_best,
-            val_metric=val_metric if is_best else None,
-        )
-
         # Early stopping
         if early_stopper.early_stop(val_metric):
             log(f"Early stopping triggered at epoch {epoch + 1}")
@@ -218,10 +217,9 @@ def train() -> None:
     # if last epoch was not the best, load the best model
     best_checkpoint_info = None
     if not is_best:
-        model, optimizer, best_checkpoint_info = load_local_checkpoint(
+        model, best_checkpoint_info = load_local_checkpoint(
             run=run,
             model=model,
-            optimizer=optimizer,
             use_best_checkpoint=True,
         )
         log(f"Loaded best checkpoint: {best_checkpoint_info['artifact_name']}")

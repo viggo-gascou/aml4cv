@@ -421,16 +421,6 @@ def save_checkpoint(
 
     aliases = ["best_model"] if is_best else []
 
-    if optimizer:
-        optimizer_path = str(Path(run.dir).joinpath(f"optimizer_{suffix}.pth"))
-        torch.save(optimizer.state_dict(), optimizer_path)
-        run.log_artifact(
-            optimizer_path,
-            name=f"optimizer_checkpoint_{suffix}",
-            type="optimizer",
-            aliases=aliases,
-        )
-
     # Log to wandb
     run.log_artifact(
         checkpoint_path,
@@ -516,10 +506,8 @@ def load_local_checkpoint(
     run,
     model,
     model_path="",
-    optimizer_path="",
-    optimizer=None,
     use_best_checkpoint=False,
-) -> Tuple[nn.Module, Optional[torch.optim.Optimizer], dict[str, str]]:
+) -> Tuple[nn.Module, dict[str, str]]:
     """Load a local checkpoint from the specified paths or the best checkpoint.
 
     If use_best_checkpoint is True, the best checkpoint will be loaded.
@@ -531,15 +519,11 @@ def load_local_checkpoint(
             The model to load the checkpoint into.
         model_path:
             The path to the model checkpoint file.
-        optimizer_path:
-            The path to the optimizer checkpoint file.
-        optimizer:
-            The optimizer to load the checkpoint into.
         use_best_checkpoint:
             Whether to load the best checkpoint.
 
     Returns:
-            A tuple of the loaded model, optimizer, and checkpoint info.
+            A tuple of the loaded model and checkpoint info.
     """
     checkpoint_info = {}
 
@@ -551,9 +535,6 @@ def load_local_checkpoint(
             key=lambda file: datetime.fromtimestamp(file.lstat().st_ctime),
         )[-1]
         model_path = best_model_path
-        optimizer_path = best_model_path.with_name(
-            best_model_path.name.replace("model", "optimizer")
-        )
 
         artifact_name = best_model_path.stem
         checkpoint_info["artifact_name"] = (
@@ -561,17 +542,13 @@ def load_local_checkpoint(
         )
     else:
         model_path = Path(model_path)
-        optimizer_path = Path(optimizer_path)
         checkpoint_info["artifact_name"] = None
 
     checkpoint_info["model_path"] = str(model_path)
-    checkpoint_info["optimizer_path"] = str(optimizer_path)
 
     if model_path.exists():
         model_weights = load_file(model_path)
         model.load_state_dict(model_weights)
-        if optimizer is not None:
-            optimizer.load_state_dict(torch.load(optimizer_path))
-        return model, optimizer, checkpoint_info
+        return model, checkpoint_info
     else:
-        return model, optimizer, checkpoint_info
+        return model, checkpoint_info

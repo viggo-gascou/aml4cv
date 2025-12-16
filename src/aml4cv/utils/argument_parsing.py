@@ -139,7 +139,7 @@ def parse_args() -> argparse.Namespace:
 def _parse_model(args: argparse.Namespace) -> str:
     """Parse the model_id from command line arguments."""
     model_ids = {
-        "pretrained": "google/vit-large-patch16-224-in21k",
+        "pretrained": "google/vit-base-patch16-224-in21k",
         "base": "base",
     }
     model_id = model_ids[args.model]

@@ -138,6 +138,7 @@ def train() -> None:
             loss_fn=criterion,
             prepare_batch_fn=prepare_batch,
             short_run=args.short_run,
+            args=args,
         )
 
         # Validate

@@ -226,9 +226,9 @@ def train_one_epoch(
     device: torch.device,
     run: Any,
     loss_fn: torch.nn.modules.loss._Loss,
+    args: argparse.Namespace,
     prepare_batch_fn: Optional[Callable] = None,
     short_run: bool = False,
-    args: argparse.Namespace = None,
 ) -> Tuple[float, Dict[str, float]]:
     """Train the model for one epoch.
 

@@ -60,17 +60,9 @@ class FlowersDataset(VisionDataset):
     def _load_data(
         self,
     ) -> Tuple[dict, dict]:
-        # map train to flowers test split and test to flowers train split
-        # because the original splits are 1020/6149/1020 for train/test/val
-        if self.split == "train":
-            self._flowers_split = "test"
-        elif self.split == "test":
-            self._flowers_split = "train"
-        else:
-            self._flowers_split = self.split
         dataset = Flowers102(
             self.root,
-            split=self._flowers_split,
+            split=self.split,
             download=True,
             loader=decode_image,  # pyright: ignore [reportArgumentType]
         )

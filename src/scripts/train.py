@@ -120,7 +120,9 @@ def train() -> None:
     early_stopper = EarlyStopper(
         patience=config.early_stopping_patience,
         min_delta=config.early_stopping_min_delta,
-        minimize=False,  # False for accuracy (higher is better)
+        minimize=(
+            True if "loss" in config.early_stopping_criterion else False
+        ),  # False for accuracy (higher is better)
     )
 
     # Training loop
@@ -180,8 +182,12 @@ def train() -> None:
         )
 
         # Determine metric for checkpointing
-        val_metric = val_metrics[config.early_stopping_criterion]
-        is_best = val_metric > best_val_metric
+        val_metric = metrics[config.early_stopping_criterion]
+        is_best = (
+            val_metric < best_val_metric
+            if "loss" in config.early_stopping_criterion
+            else val_metric > best_val_metric
+        )
 
         if is_best:
             best_val_metric = val_metric

@@ -25,6 +25,8 @@ REPO ?= https://github.com/viggo-gascou/aml4cv.git
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' makefile | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
+fetch-models:
+	@uv run hf download viga-rsp/aml4cv --local-dir results
 
 install: ## Install dependencies
 	@echo "Installing the project..."

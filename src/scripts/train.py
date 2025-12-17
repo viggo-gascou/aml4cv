@@ -120,14 +120,14 @@ def train() -> None:
     early_stopper = EarlyStopper(
         patience=config.early_stopping_patience,
         min_delta=config.early_stopping_min_delta,
-        minimize=(
-            True if "loss" in config.early_stopping_criterion else False
-        ),  # False for accuracy (higher is better)
+        minimize=(True if "loss" in config.early_stopping_criterion else False),
     )
 
     # Training loop
     log("Starting training...")
-    best_val_metric = float("-inf")  # For accuracy (higher is better)
+    best_val_metric = (
+        float("inf") if "loss" in config.early_stopping_criterion else float("-inf")
+    )
     is_best = False
 
     for epoch in tqdm(range(config.epochs), desc="Epochs"):

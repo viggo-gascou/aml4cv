@@ -191,7 +191,7 @@ def train() -> None:
 
         if is_best:
             best_val_metric = val_metric
-            log(f"New best model! Accuracy: {best_val_metric:.4f}")
+            log(f"New best model! Metric: {best_val_metric:.4f}")
             # Save checkpoint
             save_checkpoint(
                 run=run,
@@ -233,7 +233,7 @@ def train() -> None:
         log(f"Loaded best checkpoint: {best_checkpoint_info['artifact_name']}")
 
     # Final evaluation on test set
-    log("\nEvaluating on test set...")
+    log("Evaluating on test set...")
     test_metrics = evaluate(
         model=model,
         test_loader=test_loader,
@@ -249,7 +249,7 @@ def train() -> None:
     run.summary["test/precision"] = test_metrics["precision"]
     run.summary["test/recall"] = test_metrics["recall"]
 
-    log("\nTest Results:")
+    log("Test Results:")
     log(f"  Accuracy: {test_metrics['accuracy']:.4f}")
     log(f"  F1 (macro): {test_metrics['f1_macro']:.4f}")
     log(f"  F1 (micro): {test_metrics['f1_micro']:.4f}")

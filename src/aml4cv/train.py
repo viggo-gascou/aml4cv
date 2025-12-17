@@ -406,6 +406,36 @@ def evaluate(
     return metric.compute()
 
 
+def inference(
+    model: nn.Module,
+    data_loader: DataLoader,
+    device: torch.device,
+    short_run: bool = False,
+) -> tuple[list[Dict[str, torch.Tensor]], list[Dict[str, torch.Tensor]]]:
+    """Evaluate the model on a dataloader return preds and targets."""
+    model.eval()
+    preds, targets_ = [], []
+
+    with torch.no_grad():
+        for images, targets in tqdm(data_loader, desc="Inference"):
+            # Prepare batch
+            batch_data = prepare_batch(images, targets, device)
+
+            # Unpack based on type
+            if isinstance(batch_data, (tuple, list)) and len(batch_data) == 2:
+                images, targets = batch_data
+            else:
+                images = batch_data
+                targets = None
+
+            if model.__class__.__name__ == "ViTForImageClassification":
+                predictions = model(images).logits
+            else:
+                predictions = model(images)
+
+    return preds, targets_
+
+
 def save_checkpoint(
     run: Any,
     model: torch.nn.Module,

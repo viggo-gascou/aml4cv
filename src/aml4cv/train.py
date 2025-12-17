@@ -192,8 +192,8 @@ def get_data_transforms(
                 [v2.CenterCrop(380)],
                 p=augmentation_proba,
             ),
-            v2.Resize((image_height, image_width)),
             v2.ToDtype(torch.float32, scale=True),
+            v2.Resize((image_height, image_width)),
             v2.Normalize(mean=image_mean, std=image_std),
         ]
     )

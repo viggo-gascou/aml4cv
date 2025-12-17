@@ -44,6 +44,7 @@ def train() -> None:
         "model_name": model_id,
         "num_classes": len(CLASSES),
         "learning_rate": args.learning_rate,
+        "min_learning_rate": args.min_learning_rate,
         "weight_decay": args.weight_decay,
         "batch_size": args.batch_size,
         "epochs": args.epochs,

@@ -417,21 +417,20 @@ def inference(
     preds, targets_ = [], []
 
     with torch.no_grad():
-        for images, targets in tqdm(data_loader, desc="Inference"):
+        for batch_data in tqdm(data_loader, desc="Inference"):
             # Prepare batch
-            batch_data = prepare_batch(images, targets, device)
+            batch_data = prepare_batch(*batch_data, device)
 
             # Unpack based on type
-            if isinstance(batch_data, (tuple, list)) and len(batch_data) == 2:
-                images, targets = batch_data
-            else:
-                images = batch_data
-                targets = None
+            images, targets = batch_data
 
             if model.__class__.__name__ == "ViTForImageClassification":
                 predictions = model(images).logits
             else:
                 predictions = model(images)
+
+            preds.extend(predictions)
+            targets_.extend(targets)
 
     return preds, targets_
 

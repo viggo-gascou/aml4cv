@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--early-stop-criterion",
         type=str,
-        default="f1_macro",
+        default="val/f1_macro",
         help="Criterion for early stopping",
     )
     parser.add_argument(
